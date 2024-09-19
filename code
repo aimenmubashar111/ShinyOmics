@@ -1,0 +1,119 @@
+install.packages("shiny")
+install.packages("plotly")
+install.packages("readr")
+# Load required libraries
+library(shiny)
+library(plotly)
+library(readr)
+
+# Define UI
+ui <- fluidPage(
+  titlePanel("ShinyOmics"),
+
+  # Sidebar layout with input and output definitions
+  sidebarLayout(
+    sidebarPanel(
+      # File input for uploading CSV
+      fileInput("file", "Upload CSV File",
+                accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv")),
+
+      # Dropdown menu for selecting graph type
+      selectInput("graph_type", "Select Graph Type:",
+                  choices = c("Histogram", "Pie Chart", "Bar Plot", "Line Plot", "Scatter 2D", "Scatter 3D", "Violin", "Box Plot")),
+
+      # Dropdown menus for selecting columns (dynamically generated)
+      uiOutput("xcol_ui"),
+      uiOutput("ycol_ui"),
+      uiOutput("zcol_ui")  # For 3D scatter plot
+    ),
+
+    # Main panel for displaying outputs
+    mainPanel(
+      # Output plot
+      plotlyOutput("plot"),
+      # Text output to display selected X and Y column names
+      textOutput("selected_axes")
+    )
+  )
+)
+
+# Define server logic
+server <- function(input, output) {
+  # Reactive expression to read the uploaded CSV file
+  data <- reactive({
+    req(input$file)
+    read_csv(input$file$datapath)
+  })
+
+  # Generate UI for X and Y column selection based on the uploaded CSV
+  output$xcol_ui <- renderUI({
+    req(data())
+    selectInput("xcol", "Select X Column:", choices = names(data()))
+  })
+
+  output$ycol_ui <- renderUI({
+    req(data())
+    selectInput("ycol", "Select Y Column:", choices = names(data()))
+  })
+
+  output$zcol_ui <- renderUI({
+    if (input$graph_type %in% c("Scatter 3D", "Violin")) {
+      req(data())
+      selectInput("zcol", "Select Z Column:", choices = names(data()))
+    } else {
+      NULL  # Return NULL if not needed
+    }
+  })
+
+  # Generate plot based on selected graph type and columns
+  output$plot <- renderPlotly({
+    req(input$xcol)
+
+    plot_data <- data()
+
+    if (input$graph_type == "Histogram") {
+      req(input$ycol)
+      plot_ly(data = plot_data, x = ~get(input$xcol), type = "histogram",
+              marker = list(color = "blue")) %>%
+        layout(xaxis = list(title = input$xcol), yaxis = list(title = "Count"))
+    } else if (input$graph_type == "Pie Chart") {
+      req(input$ycol)
+      plot_ly(data = plot_data, labels = ~get(input$ycol), type = "pie",
+              marker = list(colors = rainbow(length(unique(plot_data[[input$ycol]])))))  # Rainbow color palette
+    } else if (input$graph_type == "Bar Plot") {
+      req(input$ycol)
+      plot_ly(data = plot_data, x = ~get(input$xcol), y = ~get(input$ycol), type = "bar",
+              marker = list(color = "blue")) %>%
+        layout(xaxis = list(title = input$xcol), yaxis = list(title = input$ycol))
+    } else if (input$graph_type == "Line Plot") {
+      plot_ly(data = plot_data, x = ~get(input$xcol), y = ~get(input$ycol), type = "scatter", mode = "lines",
+              line = list(width = 1)) %>%
+        layout(xaxis = list(title = input$xcol), yaxis = list(title = input$ycol))
+    } else if (input$graph_type == "Box Plot") {
+      req(input$ycol)
+      plot_ly(data = plot_data, x = ~get(input$xcol), y = ~get(input$ycol), type = "box", mode = "marker") %>%
+        layout(xaxis = list(title = input$xcol), yaxis = list(title = input$ycol))
+    } else if (input$graph_type == "Scatter 2D") {
+      req(input$ycol)
+      plot_ly(data = plot_data, x = ~get(input$xcol), y = ~get(input$ycol), type = "scatter", mode = "markers",
+              marker = list(color = ~get(input$ycol), colorscale = "Viridis")) %>%
+        layout(xaxis = list(title = input$xcol), yaxis = list(title = input$ycol))  # Color scale example
+    } else if (input$graph_type == "Violin") {
+      req(input$ycol)
+      plot_ly(data = plot_data, x = ~get(input$xcol), y = ~get(input$ycol), type = "violin") %>%
+        layout(xaxis = list(title = input$xcol), yaxis = list(title = input$ycol))
+    } else if (input$graph_type == "Scatter 3D") {
+      req(input$ycol, input$zcol)
+      plot_ly(data = plot_data, x = ~get(input$xcol), y = ~get(input$ycol), z = ~get(input$zcol), type = "scatter3d", mode = "markers",
+              marker = list(color = ~get(input$zcol), colorscale = "Jet")) %>%
+        layout(scene = list(
+          xaxis = list(title = input$xcol),
+          yaxis = list(title = input$ycol),
+          zaxis = list(title = input$zcol)
+        ))  # Color scale example for 3D scatter plot
+    }
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
